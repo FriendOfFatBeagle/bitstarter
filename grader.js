@@ -25,8 +25,11 @@ var fs = require('fs');
 var program = require('commander');
 var cheerio = require('cheerio');
 var HTMLFILE_DEFAULT = "index.html";
-var CHECKSFILE_DEFAULT = "checks.json";
-
+var CHECKSFILE_DEFAULT = '';//"checks.json";
+var URLSTRING_DEFAULT = '';//"http://vast-brushlands-7005.herokuapp.com/";
+var util = require('util');
+var rest = require('restler');
+var checksJsonFilenameFromConsole = ""; 
 var assertFileExists = function(infile) {
     var instr = infile.toString();
     if(!fs.existsSync(instr)) {
@@ -78,21 +81,62 @@ var checkHtmlFile = function(htmlfile, checksfile) {
     return out;
 };
 
+var checkHtmlFromUrl = function(htmlString, checksfile) {
+    $ =  cheerio.load( htmlString );//cheerioHtmlFile(htmlfile);
+// Assume checkfile is on local drive.
+    var checks = loadChecks(checksfile).sort();// a js object returned via JSON.parse()                      
+    var out = {};// empty object                                                                              
+    for(var ii in checks) {
+        var present = $(checks[ii]).length > 0;
+        out[checks[ii]] = present;  // mark each parsed non-zero length string as true                        
+    }
+    return out;
+};
+
 var clone = function(fn) {
     // Workaround for commander.js issue.
     // http://stackoverflow.com/a/6772648
     return fn.bind({});
 };
 
+var processUrlGet = function(result, response) {
+        if (result instanceof Error) {
+            console.error('Error: ' + util.format(response.message));
+	    return result;
+       } else {// may have to convert to from buffer to string....
+//          console.log(result);
+//	   console.log("===========Leaving processUrlGet: ============= ");
+	   var checkJson = checkHtmlFromUrl( result, checksJsonFilenameFromConsole);
+	   var outJson = JSON.stringify(checkJson, null, 4);                                                            console.log(outJson); 
+//        return result;
+        }
+//	return result;
+};
+
 if(require.main == module) {
     program
-        .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
-        .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
+        .option('-c, --checks <check_file>', 'Path to checks.json') //, clone(assertFileExists), CHECKSFILE_DEFAULT)
+        .option('-f, --file <html_file>', 'Path to index.html') //, clone(assertFileExists), HTMLFILE_DEFAULT)
+        .option('-u, --url <url_string>', 'Path to URL') //, clone(assertFileExists), URLSTRING_DEFAULT)
         .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
-    var outJson = JSON.stringify(checkJson, null, 4);
-    console.log(outJson);
-} else { 
+
+    if (program.checks && program.file ) {
+//	console.log("Using local file");
+	var checkJson = checkHtmlFile(program.file, program.checks);
+	var outJson = JSON.stringify(checkJson, null, 4);
+	console.log(outJson);
+    } else if( program.checks && program.url ) {
+//	console.log("Using URL");
+	var urlResult = rest.get(program.url).on('complete', processUrlGet );
+	checksJsonFilenameFromConsole = program.checks;// must save name here for later use in processUrlGet.
+//	console.log("program.checks:  " + checksJsonFilenameFromConsole);
+// rest.get(...) returns immediately and processUrlGet is only called when there is a response!
+// An event driven example. 
+// So we cannot do html parsing here since the URL's html string does not exists yet!
+	}
+//	console.log("===============  program.url check ...");
+    }
+ else { 
 // exports declares checkHtmlFile() callable from outside this file 
 // via its assignment to exports.checkHtmlFile.
 //   E.g.: In another file1,  var m = require( grader );  //grader.js is this file
